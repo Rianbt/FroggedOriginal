@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class PlayerBasico : MonoBehaviour
+public class Movimentac3oPlayer : MonoBehaviour
 {
     // Velocidade horizontal do jogador
     public float velocidade = 5f;
@@ -11,9 +11,12 @@ public class PlayerBasico : MonoBehaviour
     public float tempoMaximoPulo = 0.5f;
 
     // Configurações de gravidade para pulo mais rápido
-    public float gravidadePulo = 2.5f;    // Gravidade durante o pulo (subida)
-    public float gravidadeQueda = 3f;     // Gravidade durante a queda
-    public float gravidadeNormal = 1f;    // Gravidade normal
+    public float gravidadePulo = 2.5f;
+    public float gravidadeQueda = 3f;
+    public float gravidadeNormal = 1f;
+
+    // Força do impulso lateral no pulo
+    public float forcaImpulsoLateral = 15f;
 
     // Verificação se está no chão
     public Transform checarChao;
@@ -22,32 +25,98 @@ public class PlayerBasico : MonoBehaviour
 
     // Componentes
     private Rigidbody2D rb;
+    private Animator animator;
     private bool estaNoChao;
     private bool carregandoPulo;
     private float tempoPressionado;
     private bool estaPulando;
+    private Vector3 escalaOriginal;
+    private bool viradoParaDireita = true;
+
+    // Parâmetros do Animator
+    private readonly int MOVIMENTO_HORIZONTAL = Animator.StringToHash("MovimentoHorizontal");
+    private readonly int ESTA_NO_CHAO = Animator.StringToHash("EstaNoChao");
+    private readonly int ESTA_PULANDO = Animator.StringToHash("EstaPulando");
+    private readonly int CARREGANDO_PULO = Animator.StringToHash("CarregandoPulo");
 
     void Start()
     {
-        // Pega a referência ao Rigidbody2D do jogador
+        // Pega as referências dos componentes
         rb = GetComponent<Rigidbody2D>();
+        animator = GetComponent<Animator>();
         rb.gravityScale = gravidadeNormal;
-        Debug.Log("Player iniciado - Rigidbody: " + (rb != null));
+
+        // Armazena a escala original do player
+        escalaOriginal = transform.localScale;
+
+        // Se não encontrou o Animator, tenta encontrar nos filhos
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>();
+        }
     }
 
     void Update()
     {
-        // Verifica se está tocando o chão (para permitir pular)
+        // Verifica se está tocando o chão
         bool estavaNoChao = estaNoChao;
         estaNoChao = Physics2D.OverlapCircle(checarChao.position, raioChecagem, chaoLayer);
 
-        // DEBUG: Mostra estado atual (pode remover depois que estiver funcionando)
-        //Debug.Log($"Estado: noChao={estaNoChao}, carregando={carregandoPulo}, pulando={estaPulando}, velY={rb.linearVelocity.y}");
+        // Atualiza o estado de pulo quando toca no chão
+        if (estaNoChao && !estavaNoChao)
+        {
+            estaPulando = false;
+        }
 
+        // Atualiza os parâmetros do Animator
+        AtualizarAnimator();
+
+        // Controles de pulo
+        ProcessarPulo();
+
+        // Movimento horizontal
+        ProcessarMovimento();
+    }
+
+    void ProcessarMovimento()
+    {
+        // SÓ PERMITE MOVIMENTO SE NÃO ESTIVER CARREGANDO PULO
+        if (!carregandoPulo)
+        {
+            float movimento = 0f;
+
+            // Tecla para direita (D ou seta direita)
+            if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
+            {
+                movimento = 1f;
+            }
+            // Tecla para esquerda (A ou seta esquerda)
+            else if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
+            {
+                movimento = -1f;
+            }
+
+            // Define a velocidade horizontal (mantém a velocidade vertical)
+            rb.linearVelocity = new Vector2(movimento * velocidade, rb.linearVelocity.y);
+
+            // Atualiza a direção do personagem
+            if (movimento != 0)
+            {
+                VirarPersonagem(movimento > 0);
+            }
+        }
+        else
+        {
+            // Se estiver carregando pulo, mantém a velocidade horizontal em zero
+            rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+        }
+    }
+
+    void ProcessarPulo()
+    {
         // Inicia o carregamento do pulo quando espaço é pressionado e está no chão
         if (Input.GetKeyDown(KeyCode.Space) && estaNoChao && !carregandoPulo && !estaPulando)
         {
-            Debug.Log("Iniciando carregamento do pulo");
             IniciarCarregamentoPulo();
         }
 
@@ -55,12 +124,10 @@ public class PlayerBasico : MonoBehaviour
         if (Input.GetKey(KeyCode.Space) && carregandoPulo)
         {
             tempoPressionado += Time.deltaTime;
-            //Debug.Log($"Carregando pulo: {tempoPressionado:F2}s");
 
             // Limite máximo de carregamento
             if (tempoPressionado >= tempoMaximoPulo)
             {
-                Debug.Log("Pulo automático (tempo máximo)");
                 ExecutarPulo();
                 carregandoPulo = false;
             }
@@ -69,7 +136,6 @@ public class PlayerBasico : MonoBehaviour
         // Executa o pulo quando espaço é solto
         if (Input.GetKeyUp(KeyCode.Space) && carregandoPulo)
         {
-            Debug.Log("Pulo executado (tecla solta)");
             ExecutarPulo();
             carregandoPulo = false;
         }
@@ -79,53 +145,50 @@ public class PlayerBasico : MonoBehaviour
         {
             if (rb.linearVelocity.y > 0 && !estaNoChao)
             {
-                // Subindo - aplica gravidade mais forte para subida rápida
                 rb.gravityScale = gravidadePulo;
                 estaPulando = true;
             }
             else if (rb.linearVelocity.y < 0 && !estaNoChao)
             {
-                // Caindo - aplica gravidade ainda mais forte para queda rápida
                 rb.gravityScale = gravidadeQueda;
-                estaPulando = false;
+                estaPulando = true;
             }
-            else if (estaNoChao && rb.linearVelocity.y <= 0.1f)
+            else if (estaNoChao && Mathf.Abs(rb.linearVelocity.y) <= 0.1f)
             {
-                // No chão - gravidade normal
                 rb.gravityScale = gravidadeNormal;
                 estaPulando = false;
-
-                // Reseta o estado de carregamento apenas quando realmente está no chão
-                if (carregandoPulo)
-                {
-                    Debug.Log("Resetando carregamento no chão");
-                    carregandoPulo = false;
-                }
             }
         }
+    }
 
-        // Movimento horizontal
-        float movimento = 0f;
+    void AtualizarAnimator()
+    {
+        if (animator == null) return;
 
-        // Tecla para direita (D ou seta direita)
-        if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
+        // Calcula movimento horizontal absoluto para animação
+        float movimentoHorizontal = Mathf.Abs(rb.linearVelocity.x);
+
+        // Atualiza todos os parâmetros do Animator
+        animator.SetFloat(MOVIMENTO_HORIZONTAL, movimentoHorizontal);
+        animator.SetBool(ESTA_NO_CHAO, estaNoChao);
+        animator.SetBool(ESTA_PULANDO, estaPulando);
+        animator.SetBool(CARREGANDO_PULO, carregandoPulo);
+    }
+
+    void VirarPersonagem(bool paraDireita)
+    {
+        viradoParaDireita = paraDireita;
+
+        Vector3 novaEscala = escalaOriginal;
+        if (!viradoParaDireita)
         {
-            movimento = 1f;
+            novaEscala.x = -Mathf.Abs(escalaOriginal.x);
         }
-        // Tecla para esquerda (A ou seta esquerda)
-        else if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
+        else
         {
-            movimento = -1f;
+            novaEscala.x = Mathf.Abs(escalaOriginal.x);
         }
-
-        // Define a velocidade horizontal (mantém a velocidade vertical)
-        rb.linearVelocity = new Vector2(movimento * velocidade, rb.linearVelocity.y);
-
-        // Inverte o sprite quando muda de direção
-        if (movimento != 0)
-        {
-            transform.localScale = new Vector3(Mathf.Sign(movimento), 1f, 1f);
-        }
+        transform.localScale = novaEscala;
     }
 
     void IniciarCarregamentoPulo()
@@ -136,9 +199,7 @@ public class PlayerBasico : MonoBehaviour
 
         // Para o movimento vertical e congela no eixo Y
         rb.linearVelocity = new Vector2(rb.linearVelocity.x, 0f);
-        rb.gravityScale = 0f; // Remove a gravidade enquanto carrega
-
-        Debug.Log("Carregamento iniciado - gravidade: 0");
+        rb.gravityScale = 0f;
     }
 
     void ExecutarPulo()
@@ -149,14 +210,16 @@ public class PlayerBasico : MonoBehaviour
         // Calcula força do pulo baseada no tempo pressionado
         float forcaAtual = Mathf.Lerp(forcaPulo, forcaPuloMaxima, tempoPressionado / tempoMaximoPulo);
 
-        // Aplica o pulo
-        rb.linearVelocity = new Vector2(rb.linearVelocity.x, forcaAtual);
-        estaPulando = true;
+        // Adiciona um impulso horizontal na direção que o personagem está virado
+        float impulsoHorizontal = viradoParaDireita ? forcaImpulsoLateral : -forcaImpulsoLateral;
 
-        Debug.Log($"Pulo executado! Força: {forcaAtual}, Tempo pressionado: {tempoPressionado:F2}, Gravidade: {rb.gravityScale}");
+        // Aplica o pulo - MANTÉM a velocidade horizontal atual e ADICIONA o impulso
+        Vector2 velocidadeAtual = rb.linearVelocity;
+        rb.linearVelocity = new Vector2(velocidadeAtual.x + impulsoHorizontal, forcaAtual);
+
+        estaPulando = true;
     }
 
-    // Desenha o círculo de checagem do chão no editor (ajuda visualmente)
     void OnDrawGizmosSelected()
     {
         if (checarChao == null) return;

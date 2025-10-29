@@ -1,3 +1,4 @@
+using Unity.Android.Types;
 using UnityEngine;
 
 public class MovimentaçãoPlayer : MonoBehaviour
@@ -39,6 +40,7 @@ public class MovimentaçãoPlayer : MonoBehaviour
     private readonly int ESTA_NO_CHAO = Animator.StringToHash("EstaNoChao");
     private readonly int ESTA_PULANDO = Animator.StringToHash("EstaPulando");
     private readonly int CARREGANDO_PULO = Animator.StringToHash("CarregandoPulo");
+
 
     void Start()
     {
@@ -91,10 +93,12 @@ public class MovimentaçãoPlayer : MonoBehaviour
             if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
             {
                 movimento = 1f;
+                animator.SetFloat("andar", movimento);
             }
             else if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
             {
                 movimento = -1f;
+                animator.SetFloat("andar", Mathf.Abs(movimento));
             }
 
             rb.linearVelocity = new Vector2(movimento * velocidade, rb.linearVelocity.y);
@@ -102,6 +106,10 @@ public class MovimentaçãoPlayer : MonoBehaviour
             if (movimento != 0)
             {
                 VirarPersonagem(movimento > 0);
+            }
+            if(movimento == 0)
+            {
+                animator.SetFloat("andar", 0f);
             }
         }
         else
